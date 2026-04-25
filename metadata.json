@@ -1,0 +1,6 @@
+{
+  "name": "NEXUS POULS Orchestrator",
+  "description": "Autonomous agent management system for the NEXUS (POULS) social media platform, featuring core agents (OpenClaw, Mirofish, Betafish, Onyx) and a plugin registry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
