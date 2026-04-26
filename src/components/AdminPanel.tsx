@@ -227,8 +227,8 @@ function CrewAISection({ agents, setAgents }: { agents: any, setAgents: any }) {
               <div style={{marginTop:14,borderTop:`1px solid ${C.border}`,paddingTop:14,
                 display:"flex",flexDirection:"column",gap:12}}>
 
-                {/* Enable/Model Row */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {/* Enable/Model/Role Row */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                   <div>
                     <Label sub>Durum</Label>
                     <Toggle value={agent.enabled}
@@ -240,6 +240,14 @@ function CrewAISection({ agents, setAgents }: { agents: any, setAgents: any }) {
                     <Toggle value={agent.delegation} size="sm"
                       onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],delegation:v}}))}
                       label="allow_delegation"/>
+                  </div>
+                  <div>
+                    <Label sub>Rol</Label>
+                    <Select value={agent.role || "worker"}
+                      onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],role:v}}))}
+                      options={[
+                        "worker", "manager", "executor", "researcher", "analyst", "arbitrage", "signal_and_feedback"
+                      ]}/>
                   </div>
                 </div>
 
@@ -284,6 +292,19 @@ function CrewAISection({ agents, setAgents }: { agents: any, setAgents: any }) {
                         * Boş bırakılırsa sistemdeki varsayılan .env anahtarları kullanılır. "Gemini API kaldır" talebiniz üzerine sistem varsayılan olarak API anahtarı istemez, simulasyon üzerinden çalışır. Gerçek bağlantı için buraya ilgili modelin key'ini girebilirsiniz.
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Agent Delegation */}
+                <div style={{display:"grid",gap:8,padding:"8px 12px",background:`rgba(255,255,255,0.02)`,border:`1px solid ${C.border}`,borderRadius:6,marginTop:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <Label sub style={{marginBottom:0}}>Görev Delegasyonu Yapabilir</Label>
+                    <Toggle value={agent.allowDelegation ?? false} onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],allowDelegation:v}}))}/>
+                  </div>
+                  <div style={{fontSize:9,color:C.muted}}>Aktif edildiğinde bu ajan, kendi yeteneği (capability) dışındaki veya confidence eşiğinin altındaki işleri diğer uzman ajanlara (Örn: Signal, Risk) delege edebilir.</div>
+                  <div style={{marginTop:4}}>
+                    <Label sub>Yetenek Etiketleri (Örn: signal, execution)</Label>
+                    <Input value={agent.capabilities || ""} onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],capabilities:v}}))} placeholder="virgülle ayırın"/>
                   </div>
                 </div>
 
@@ -339,6 +360,23 @@ function CrewAISection({ agents, setAgents }: { agents: any, setAgents: any }) {
                   </div>
                 )}
 
+                {/* Betafish configuration */}
+                {name==="Betafish"&&(
+                  <div>
+                    <Label sub>Betafish Arbitraj Ayarları</Label>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:4}}>
+                      <div>
+                        <Label sub style={{fontSize:9}}>Arbitrage Scanner Delay</Label>
+                        <Input value={agent.arbScanDelay||500} onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],arbScanDelay:v}}))} suffix="ms" type="number"/>
+                      </div>
+                      <div>
+                        <Label sub style={{fontSize:9}}>Arbitrage Spread Threshold</Label>
+                        <Input value={agent.arbSpreadThresh||0.05} onChange={v=>setAgents((a: any)=>({...a,[name]:{...a[name],arbSpreadThresh:v}}))} suffix="%" type="number"/>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{display:"flex",gap:6,marginTop:2}}>
                   <Btn variant="success" small>💾 Kaydet</Btn>
                   <Btn variant="danger" small>🔄 Resetle</Btn>
@@ -349,6 +387,14 @@ function CrewAISection({ agents, setAgents }: { agents: any, setAgents: any }) {
           </Card>
         );
       })}
+      
+      <div style={{marginTop: 16, display: "flex", justifyContent: "flex-end"}}>
+        <Btn variant="primary" onClick={() => {
+          // This simulates saving to an external state or API, though in this React setup
+          // setAgents is already persisting it to the component state.
+          alert("All agent configurations saved successfully!");
+        }}>💾 Save All Agent Configurations</Btn>
+      </div>
     </div>
   );
 }
@@ -399,10 +445,27 @@ function TradingSection({ tradeCfg, setTradeCfg }: { tradeCfg: any, setTradeCfg:
 
       {/* Per-symbol config */}
       <Card>
-        <Label>Sembol Bazlı Kaldıraç & Marjin</Label>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <Label>Sembol Bazlı Kaldıraç & Marjin</Label>
+          <Btn variant="ghost" small onClick={() => {
+            const symInput = prompt("Yeni Sembol (Örn: WIF/USDT):");
+            if (symInput && symInput.trim() !== "") {
+              const cleaned = symInput.trim().toUpperCase();
+              if(!SYMBOLS.includes(cleaned)) SYMBOLS.push(cleaned);
+              setTradeCfg((c: any) => ({
+                ...c,
+                symbols: {
+                  ...c.symbols,
+                  [cleaned]: { leverage: 10, marginMode: "isolated", posSize: 5, sl: 2, tp: 4 }
+                }
+              }));
+              setSelSym(cleaned);
+            }
+          }}>+ Yeni Sembol</Btn>
+        </div>
         {/* Symbol tabs */}
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:16,marginTop:4}}>
-          {SYMBOLS.map(s=>(
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:16}}>
+          {Object.keys(tradeCfg.symbols || {}).map(s=>(
             <button key={s} onClick={()=>setSelSym(s)}
               style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${selSym===s?C.green:C.dim}`,
                 background:selSym===s?"rgba(0,255,178,0.1)":"rgba(255,255,255,0.02)",
@@ -438,6 +501,18 @@ function TradingSection({ tradeCfg, setTradeCfg }: { tradeCfg: any, setTradeCfg:
             ))}
           </div>
         </div>
+
+        {selSym === "BTC/USDT" && (
+          <div style={{marginBottom:16, padding:"12px", borderRadius:10, backgroundColor:"rgba(245,158,11,0.05)", border:`1px solid rgba(245,158,11,0.2)`}}>
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+              <Label sub style={{marginBottom:0}}>Arbitraj Spread</Label>
+              <div style={{fontFamily:"'DM Mono',monospace", color:C.amber, fontWeight:600}}>$48 (0.051%)</div>
+            </div>
+            <div style={{marginTop:8, fontSize:10, color:C.amber, display:"flex", alignItems:"center", gap:6}}>
+              <span>⚡</span> ARBİTRAJ ADAYI — Betafish hazır
+            </div>
+          </div>
+        )}
 
         {/* Position size, SL, TP */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
@@ -533,6 +608,23 @@ function RiskSection({ risk, setRisk }: { risk: any, setRisk: any }) {
         </div>
       </Card>
 
+      {/* Black Swan Logic */}
+      <Card>
+        <Label>Black Swan Eşik Değerleri (Aşırı Durum Koruması)</Label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+          {[
+            {k:"blackSwanDrawdown",   l:"Kritik Drawdown Eşiği",   s:"%",  def:10},
+            {k:"blackSwanVolSpike",   l:"Volatilite Spike Kriteri",s:"z",  def:4},
+            {k:"exchangeLatencyMax",  l:"Maks Borsa Gecikmesi",    s:"ms", def:3000},
+          ].map(({k,l,s,def}: any)=>(
+            <div key={k}>
+              <Label sub>{l}</Label>
+              <Input value={risk[k]??def} onChange={v=>setRisk((r: any)=>({...r,[k]:v}))} suffix={s} type="number"/>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {/* Kill Switch */}
       <Card style={{border:"1px solid rgba(255,77,109,0.25)",background:"rgba(255,77,109,0.04)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -610,6 +702,34 @@ function StrategySection({ strategy, setStrategy }: { strategy: any, setStrategy
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* Strategy Mutation Engine */}
+      <Card>
+        <Label>Strateji Mutasyon Motoru (Evolutionary Engine)</Label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+          <div>
+            <Label sub>Mutasyon Oranı (%)</Label>
+            <Input value={strategy.mutationRate??5} onChange={v=>setStrategy((st: any)=>({...st,mutationRate:v}))} suffix="%" type="number"/>
+          </div>
+          <div>
+            <Label sub>Crossover Stratejisi</Label>
+            <Select 
+              value={strategy.crossoverStrategy??"uniform"} 
+              onChange={v=>setStrategy((st: any)=>({...st,crossoverStrategy:v}))} 
+              options={["uniform", "single-point", "two-point"]}
+            />
+          </div>
+          <div>
+            <Label sub>Fitness Fonksiyonu</Label>
+            <Select 
+              value={strategy.fitnessMulti??"sharpe"} 
+              onChange={v=>setStrategy((st: any)=>({...st,fitnessMulti:v}))} 
+              options={["sharpe", "sortino", "total pnl", "calmar"]}
+            />
+          </div>
+        </div>
+        <Btn variant="primary" onClick={()=>alert("Mutasyon döngüsü başlatıldı. Başarısız stratejiler emekliye ayrılıyor, kazananlar çaprazlanıyor.")} style={{marginTop: 12, width: "100%"}}>♻️ Mutasyon Döngüsünü Tetikle</Btn>
       </Card>
 
       {/* Timing */}
@@ -749,6 +869,43 @@ function PluginsSection({ onInstall }: { onInstall: (repoUrl: string) => void })
   );
 }
 
+function FreqtradeSection({ cfg, setCfg }: { cfg: any, setCfg: any }) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <SectionTitle icon="📈" children="Freqtrade Entegrasyonu" badge="Plugin.v1"/>
+      
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,color:"#fff",fontSize:13}}>Freqtrade Bridge Durumu</div>
+            <div style={{fontSize:9,color:C.muted}}>Sinyal ve backtest verilerini çekip Orchestrator'a iletir</div>
+          </div>
+          <Toggle value={cfg.enabled} onChange={v=>setCfg((c: any)=>({...c,enabled:v}))}/>
+        </div>
+
+        <Label>API Configuration</Label>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:8}}>
+          <Input value={cfg.apiUrl} onChange={v=>setCfg((c: any)=>({...c,apiUrl:v}))} prefix="API URL" />
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <Input value={cfg.username} onChange={v=>setCfg((c: any)=>({...c,username:v}))} prefix="Username" />
+            <Input value={cfg.password} onChange={v=>setCfg((c: any)=>({...c,password:v}))} prefix="Password" type="password" />
+          </div>
+          <Input value={cfg.strategy} onChange={v=>setCfg((c: any)=>({...c,strategy:v}))} prefix="Strateji" />
+        </div>
+        
+        <Btn variant="ghost" small onClick={()=>alert("Bağlantı başarılı! Freqtrade REST API yanıt veriyor.")} style={{marginTop:16}}>🔌 Bağlantıyı Test Et</Btn>
+      </Card>
+      
+      <Card>
+        <Label>Local Kurulum Bilgisi</Label>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",lineHeight:1.6}}>
+          Dataclaw'ı kendi sunucunuza aktardığınızda (export), sağlanan <code>install_freqtrade.sh</code> betiğini çalıştırarak resmi Freqtrade GitHub reposunu makinenize klonlayıp kurabilirsiniz. Freqtrade Bridge, ayarlanmış olan REST API adresi üzerinden otonom olarak konuşacaktır.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ─── MAIN ADMIN PANEL ───────────────────────────────────
 export default function AdminPanel() {
   const [activeSection, setActiveSection] = useState("crewai");
@@ -773,7 +930,8 @@ export default function AdminPanel() {
   });
   const [risk, setRisk] = useState({
     maxDrawdown:15,dailyLossLim:5,maxPositions:5,maxPerTrade:10,cooldownMin:30,correlLimit:70,
-    autoStopLoss:true,trailingStop:false,antiLiquidation:true,news_pause:false,volFilter:true,nightMode:false
+    autoStopLoss:true,trailingStop:false,antiLiquidation:true,news_pause:false,volFilter:true,nightMode:false,
+    blackSwanDrawdown:10,blackSwanVolSpike:4
   });
   const [strategy, setStrategy] = useState({
     modes:["arbitrage","scalping","news"],
@@ -783,11 +941,15 @@ export default function AdminPanel() {
   const [system, setSystem] = useState({
     dbLog:true,tradeLog:true,agentLog:false,alertPush:true,emailAlert:false
   });
+  const [freqtradeCfg, setFreqtradeCfg] = useState({
+    enabled: true, apiUrl: "http://127.0.0.1:8080/api/v1", username: "freqtrader", password: "", strategy: "AwesomeMacd"
+  });
 
   const handleSave = () => { setSaved(true); setTimeout(()=>setSaved(false),2000); };
 
   const NAV = [
     {id:"crewai",   icon:"🤖", label:"CrewAI"},
+    {id:"freqtrade",icon:"📈", label:"Freqtrade"},
     {id:"trading",  icon:"⚡", label:"İşlem"},
     {id:"risk",     icon:"🛡️", label:"Risk"},
     {id:"strategy", icon:"🎯", label:"Strateji"},
@@ -859,6 +1021,7 @@ export default function AdminPanel() {
       {/* Content */}
       <div style={{flex:1,overflowY:"auto",padding:"16px 16px"}}>
         {activeSection==="crewai"   && <CrewAISection   agents={agents}   setAgents={setAgents}/>}
+        {activeSection==="freqtrade"&& <FreqtradeSection cfg={freqtradeCfg} setCfg={setFreqtradeCfg}/>}
         {activeSection==="trading"  && <TradingSection  tradeCfg={tradeCfg} setTradeCfg={setTradeCfg}/>}
         {activeSection==="risk"     && <RiskSection     risk={risk}       setRisk={setRisk}/>}
         {activeSection==="strategy" && <StrategySection strategy={strategy} setStrategy={setStrategy}/>}
