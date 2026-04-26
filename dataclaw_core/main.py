@@ -1,62 +1,78 @@
 import logging
 import sys
+import time
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger("Dataclaw.Main")
 
 from dataclaw_core.core.model_router import ModelRouter
-from dataclaw_core.core.black_swan_guard import BlackSwanGuard
-from dataclaw_core.super_core.swarm_orchestrator import SwarmOrchestrator, MetaGovernor
-from dataclaw_core.agents.signal_agent import DistributedSignalAgent
-from dataclaw_core.agents.mirofish import Mirofish
-from dataclaw_core.agents.betafish import Betafish
-from dataclaw_core.memory.episodic_memory import EpisodicMemory
+from dataclaw_core.core.safety_system import SafetySystem
+from dataclaw_core.exchanges.smart_router import SmartExchangeRouter
+from dataclaw_core.backend.redis_bus import RedisEventBus
+from dataclaw_core.backend.vector_memory import VectorMemoryService
+from dataclaw_core.agents.swarm import AlphaHunter, RiskGuardian, ExecutionAgent, OnchainAgent, MetaGovernor
 from dataclaw_core.plugins.plugin_loader import PluginRegistry
 
-def main():
-    logger.info("Initializing Dataclaw Autonomous Agent OS...")
-    
-    # 1. Initialize Core Subsystems
-    router = ModelRouter()
-    guard = BlackSwanGuard(max_drawdown_percent=10.0, volatility_spike_threshold=4.0)
-    memory = EpisodicMemory()
-    registry = PluginRegistry()
-    
-    # 2. Setup Plugins
-    registry.discover_plugins()
-    
-    # 3. Initialize Swarm
-    swarm = SwarmOrchestrator()
-    swarm.register_agent(DistributedSignalAgent("AlphaHunter", router))
-    
-    mirofish = Mirofish("Mirofish", router, memory)
-    swarm.register_agent(mirofish)
-    
-    betafish = Betafish("Betafish")
-    swarm.register_agent(betafish)
+class DataclawOS:
+    def __init__(self):
+        logger.info("Initializing Dataclaw Autonomous Agent OS...")
+        self.config = {
+            "mode": "paper", # live, paper, shadow, safe
+            "router_config": {"primary": "mistral", "fallback": "deepseek"},
+            "exchanges": {"binance": {"enabled": True}, "mexc": {"enabled": True}}
+        }
+        
+        # 1. Initialize Core Subsystems
+        self.redis_bus = RedisEventBus()
+        self.memory = VectorMemoryService()
+        self.router = ModelRouter(self.config["router_config"])
+        self.safety = SafetySystem(mode=self.config["mode"])
+        self.exchange_engine = SmartExchangeRouter(self.config["exchanges"])
+        self.registry = PluginRegistry()
 
-    governor = MetaGovernor(swarm)
-    
-    # 4. Simulation Loop
-    import json
-    logger.info(f"Orchestrator System Status: {json.dumps(swarm.get_system_status(), indent=2)}")
-    
-    logger.info("Starting simulation loop...")
-    market_data = {"price": 94000, "volatility_z_score": 1.2, "exchange_latency_ms": 150}
-    portfolio = {"current_drawdown": 1.5}
-    
-    # Check Black Swan Guard
-    guard_status = guard.monitor(portfolio, market_data)
-    
-    # Arbitrate
-    decision_payload = governor.arbitrate(market_data, guard_status)
-    
-    # Memory record
-    if decision_payload["final_action"] != "HOLD":
-        memory.record_trade({"strategy": "AlphaHunter", "action": decision_payload["final_action"], "pnl": 0.0})
-    
-    logger.info(f"System Output Matrix: {decision_payload}")
+        # 2. Setup Swarm
+        self.swarm = {
+            "alpha": AlphaHunter(self.memory, self.redis_bus),
+            "risk": RiskGuardian(self.memory, self.redis_bus),
+            "execution": ExecutionAgent(self.memory, self.redis_bus),
+            "onchain": OnchainAgent(self.memory, self.redis_bus),
+            "governor": MetaGovernor(self.memory, self.redis_bus)
+        }
+
+    def run(self):
+        logger.info("Dataclaw OS actively monitoring...")
+        
+        try:
+            # Main event loop (simulated)
+            market_data = {"symbol": "BTC/USDT", "price": 94000, "volatility": "normal"}
+            
+            # Step 1: Discover
+            alpha_signal = self.swarm["alpha"].process(market_data)
+            onchain_signal = self.swarm["onchain"].process(market_data)
+            
+            # Step 2: Meta Governance
+            decision = self.swarm["governor"].process([alpha_signal, onchain_signal])
+            
+            if decision["final_decision"] == "execute":
+                # Step 3: Risk Evaluation
+                risk_eval = self.swarm["risk"].process(alpha_signal)
+                
+                if risk_eval["approved"]:
+                    # Step 4: Validate Safety
+                    order = {"symbol": alpha_signal["symbol"], "direction": alpha_signal["direction"], "amount": 0.01}
+                    if self.safety.validate_execution(order):
+                        # Step 5: Route and Execute
+                        exec_result = self.exchange_engine.execute_order(order)
+                        self.swarm["execution"].process(exec_result) # Agent records outcome
+                        self.redis_bus.emit_trade(exec_result)
+        except KeyboardInterrupt:
+             logger.info("Shutting down Dataclaw OS.")
+             sys.exit(0)
+        except Exception as e:
+             logger.error(f"Critical system failure: {e}")
+             self.safety.engage_kill_switch(str(e))
 
 if __name__ == '__main__':
-    main()
+    system = DataclawOS()
+    system.run()

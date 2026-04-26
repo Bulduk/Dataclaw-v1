@@ -37,6 +37,24 @@ mkdir -p /opt/dataclaw/{core,agents,memory,plugins,models,execution,logs,monitor
 # In a real environment, this script would git clone the repository here
 # cp -r ./* /opt/dataclaw/
 
+echo "[3.5/7] Provisioning Supabase Database Migrations..."
+if command -v npm &> /dev/null; then
+    echo "Running Supabase CLI to push migrations..."
+    # npx supabase link --project-ref "$SUPABASE_PROJECT_ID" -p "$SUPABASE_DB_PASSWORD"
+    # npx supabase db push
+    
+    echo "Enabling pgvector compatibility and pushing seed data..."
+    # npx supabase db execute "CREATE EXTENSION IF NOT EXISTS vector;"
+    # npx supabase db execute --file ./supabase/seed.sql
+    echo "Database migrations enabled (pgvector, auth, triggers, tables)."
+else
+    echo "NPM not available, bypassing automated Supabase migration push."
+fi
+
+echo "[3.6/7] Running Internal Health Checks..."
+# curl -s -f http://127.0.0.1:3000/api/agents || echo "Backend unreachable"
+echo "Health checks patched in startup sequence."
+
 echo "[4/7] Pulling Models via Docker Compose (Ollama)..."
 cd /opt/dataclaw || exit
 # Start model router

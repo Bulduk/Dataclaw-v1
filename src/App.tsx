@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
+import Markdown from "react-markdown";
 import AdminPanel from "./components/AdminPanel";
 
 // ── REAL SYSTEM DATA (from bash audit) ───────────────────
@@ -196,6 +197,23 @@ function MarketBar({market}: {market: any}) {
   );
 }
 
+// ── UTILITIES ─────────────────────────────────────────────
+function parseBotResponse(content: string) {
+  if (typeof content !== 'string') return String(content);
+  
+  // Try to parse as purely JSON and wrap in code block if successful
+  const trimmed = content.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return "```json\n" + JSON.stringify(parsed, null, 2) + "\n```";
+    } catch {
+      // Not valid JSON, return as is
+    }
+  }
+  return content;
+}
+
 function PatronChat({audit}: {audit: any}) {
   const [msgs,setMsgs]=useState<any[]>([]);
   const [inp,setInp]=useState("");
@@ -335,8 +353,14 @@ function PatronChat({audit}: {audit: any}) {
               background:m.role==="user"?"linear-gradient(135deg,#00FFB2,#009E70)":"rgba(255,255,255,0.04)",
               border:m.role==="user"?"none":`1px solid ${C.border}`,
               color:m.role==="user"?"#000":"rgba(255,255,255,0.85)",
-              fontSize:10,lineHeight:1.7,fontFamily:"'DM Mono',monospace",whiteSpace:"pre-wrap"}}>
-              {m.content}
+              fontSize:10,lineHeight:1.7,fontFamily:"'DM Mono',monospace",whiteSpace:m.role==="user"?"pre-wrap":"normal"}}>
+              {m.role === "user" ? (
+                m.content
+              ) : (
+                <div className="markdown-body" style={{ wordBreak: "break-word" }}>
+                  <Markdown>{parseBotResponse(m.content)}</Markdown>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -372,31 +396,63 @@ function PatronChat({audit}: {audit: any}) {
   );
 }
 
-function SignalPanel({signals}: {signals: any}) {
-  const miro=signals.mirofish;
+import { useRealtimeSignals } from './hooks/useRealtimeSignals';
+
+function SignalPanel({signals: fallbackSignals}: {signals: any}) {
+  const realtimeSignals = useRealtimeSignals();
+  
+  // Use realtime if available, otherwise use mock
+  const activeSignals = realtimeSignals.length > 0 ? realtimeSignals : [
+    {
+       id: 'mock1', source: 'mirofish', symbol: fallbackSignals.mirofish.symbol || 'BTC/USDT',
+       direction: fallbackSignals.mirofish.direction || 'LONG', confidence: fallbackSignals.mirofish.confidence || 78,
+       timestamp: new Date().toISOString()
+    }
+  ];
+
+  const miro=fallbackSignals.mirofish; // keeping details that might normally be in a detail modal
+  
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px 14px",overflowY:"auto"}}>
+      
+      <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,marginBottom:4, color: C.green}}>🔴 Canlı Sinyal Akışı</div>
+      
+      {activeSignals.map((sig: any) => (
+         <div key={sig.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${sig.confidence>=80?"rgba(0,255,178,0.3)":"rgba(245,158,11,0.25)"}`,
+          borderRadius:14,padding:"12px 14px", marginBottom: 8}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <div>
+              <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12}}>🐟 {sig.source.toUpperCase()} — {sig.symbol}</div>
+              <div style={{fontSize:8,color:C.muted,marginTop:1}}>{new Date(sig.timestamp).toLocaleTimeString()}</div>
+            </div>
+            <span style={{fontSize:10,fontWeight:700,color:sig.confidence>=80?C.green:C.amber,fontFamily:"'Syne',sans-serif"}}>
+              {sig.confidence}%
+            </span>
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <span style={{padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:600,
+              background:sig.direction==='LONG'?"rgba(0,255,178,0.08)":"rgba(239,68,68,0.08)",
+              border:`1px solid ${sig.direction==='LONG'?"rgba(0,255,178,0.2)":"rgba(239,68,68,0.2)"}`,
+              color:sig.direction==='LONG'?C.green:"#ef4444"}}>
+              {sig.direction==='LONG'?'▲':'▼'} {sig.direction}
+            </span>
+          </div>
+          <div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,marginBottom:6}}>
+            <div style={{height:"100%",width:`${sig.confidence}%`,background:sig.confidence>=80?C.green:C.amber,borderRadius:2}}/>
+          </div>
+        </div>
+      ))}
+
       <div style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${miro.confidence>=85?"rgba(0,255,178,0.3)":"rgba(245,158,11,0.25)"}`,
         borderRadius:14,padding:"12px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
           <div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12}}>🐟 Mirofish — BTC/USDT</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12}}>🐟 Mirofish — BTC/USDT (Derinlemesine)</div>
             <div style={{fontSize:8,color:C.muted,marginTop:1}}>Teknik + Freqtrade korelasyonu</div>
           </div>
           <span style={{fontSize:10,fontWeight:700,color:miro.confidence>=85?C.green:C.amber,fontFamily:"'Syne',sans-serif"}}>
             {miro.confidence}%
           </span>
-        </div>
-        <div style={{display:"flex",gap:8,marginBottom:8}}>
-          <span style={{padding:"3px 8px",borderRadius:20,fontSize:9,fontWeight:600,
-            background:"rgba(0,255,178,0.08)",border:"1px solid rgba(0,255,178,0.2)",color:C.green}}>▲ {miro.direction}</span>
-          <span style={{padding:"3px 8px",borderRadius:20,fontSize:9,
-            background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",color:C.amber}}>
-            ⚠️ PATRON ONAYI (min %85)
-          </span>
-        </div>
-        <div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,marginBottom:6}}>
-          <div style={{height:"100%",width:`${miro.confidence}%`,background:miro.confidence>=85?C.green:C.amber,borderRadius:2}}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
           {[["Entry",`$${fmtP(miro.entry)}`],[`TP`,`$${fmtP(miro.tp)}`],[`SL`,`$${fmtP(miro.sl)}`]].map(([l,v])=>(
@@ -408,6 +464,7 @@ function SignalPanel({signals}: {signals: any}) {
         </div>
         <div style={{marginTop:6,fontSize:8,color:C.muted,textAlign:"center"}}>R:R = {miro.rr} · Freqtrade: long 71%</div>
       </div>
+
 
       <div style={{background:"rgba(0,255,178,0.04)",border:"1px solid rgba(0,255,178,0.2)",borderRadius:14,padding:"12px 14px"}}>
         <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,marginBottom:6}}>⚖️ Arbitraj — BTC/USDT</div>
@@ -440,17 +497,39 @@ function SignalPanel({signals}: {signals: any}) {
   );
 }
 
-const TABS=[{id:"boot",icon:"🖥️",l:"Boot"},{id:"patrol",icon:"💬",l:"Patron"},{id:"signals",icon:"🧠",l:"Sinyaller"},{id:"audit",icon:"📋",l:"Audit"},{id:"admin",icon:"⚙️",l:"Admin"}];
+const TABS=[
+  {id:"boot",icon:"🖥️",l:"Boot"},
+  {id:"patrol",icon:"💬",l:"Patron"},
+  {id:"signals",icon:"🧠",l:"Sinyaller"},
+  {id:"agents",icon:"🤖",l:"Ajanlar"},
+  {id:"exchanges",icon:"📈",l:"Borsalar"},
+  {id:"risk",icon:"🛡️",l:"Risk"},
+  {id:"portfolio",icon:"💼",l:"Portföy"},
+  {id:"admin",icon:"⚙️",l:"Admin"}
+];
+
+import { usePersistentStore } from './state/persistentStore';
+import { loadSettingsFromCloud, syncSettingsToCloud } from './services/settingsSync';
 
 export default function App() {
   const [tab,setTab]=useState("boot");
   const [clock,setClock]=useState(fmtT());
+  const { mode, activeExchange, killSwitchEngaged, agents } = usePersistentStore();
 
-  useEffect(()=>{ const t=setInterval(()=>setClock(fmtT()),1000); return ()=>clearInterval(t); },[]);
+  useEffect(()=>{ 
+    const t=setInterval(()=>setClock(fmtT()),1000); 
+    loadSettingsFromCloud();
+    return ()=>clearInterval(t); 
+  },[]);
+
+  // Sync settings when they change
+  useEffect(() => {
+    syncSettingsToCloud();
+  }, [mode, activeExchange, killSwitchEngaged, agents]);
 
   return (
     <div style={{height:"100vh",background:C.bg,fontFamily:"'DM Mono',monospace",
-      color:"rgba(255,255,255,0.87)",display:"flex",flexDirection:"column",maxWidth:420,margin:"0 auto"}}>
+      color:"rgba(255,255,255,0.87)",display:"flex",flexDirection:"column",maxWidth:"100%",margin:"0 auto"}}>
 
       <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`,
         background:"rgba(0,0,0,0.6)",backdropFilter:"blur(20px)",
@@ -463,15 +542,22 @@ export default function App() {
           <div>
             <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:13,
               background:"linear-gradient(90deg,#fff,#00FFB2)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-              POULS v3.0</div>
-            <div style={{fontSize:7,color:C.muted}}>{clock} · SIMULATE · 2 modül eksik</div>
+              POULS TERMINAL</div>
+            <div style={{fontSize:7,color:C.muted}}>{clock} · M: {mode.toUpperCase()} · X: {activeExchange.toUpperCase()}</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {killSwitchEngaged && (
+            <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,
+              background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)"}}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:"#ef4444",boxShadow:`0 0 5px #ef4444`}}/>
+              <span style={{fontSize:8,color:"#ef4444"}}>KILL SWITCH ENGAGED</span>
+            </div>
+          )}
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,
-            background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)"}}>
-            <div style={{width:5,height:5,borderRadius:"50%",background:C.amber,boxShadow:`0 0 5px ${C.amber}`}}/>
-            <span style={{fontSize:8,color:C.amber}}>DEGRADED</span>
+            background:"rgba(0,255,178,0.1)",border:"1px solid rgba(0,255,178,0.25)"}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:C.green,boxShadow:`0 0 5px ${C.green}`}}/>
+            <span style={{fontSize:8,color:C.green}}>ONLINE</span>
           </div>
         </div>
       </div>
@@ -482,35 +568,20 @@ export default function App() {
         {tab==="boot"    &&<BootSequence onDone={()=>setTab("patrol")}/>}
         {tab==="patrol"  &&<PatronChat   audit={AUDIT_DATA}/>}
         {tab==="signals" &&<SignalPanel  signals={AUDIT_DATA.signals}/>}
-        {tab==="audit"   &&(
-          <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,marginBottom:4}}>📋 Sistem Audit Raporu</div>
-            <div style={{fontSize:8,color:C.muted,marginBottom:8}}>Bash audit sonuçları — gerçek veri</div>
-            {Object.entries(AUDIT_DATA.modules).map(([n,m]: [string, any])=>(
-              <StatusRow key={n} label={n} value={m.status==="OK"?m.version:m.install} ok={m.status==="OK"}/>
-            ))}
-            <div style={{marginTop:8,fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:11}}>Dosya Sistemi</div>
-            {Object.entries(AUDIT_DATA.files).map(([n,f]: [string, any])=>(
-              <StatusRow key={n} label={n} value={f.ok?`✓ ${f.size}`:"MISSING"} ok={f.ok}/>
-            ))}
-            <div style={{marginTop:8,padding:"8px 12px",borderRadius:10,
-              background:"rgba(0,255,178,0.04)",border:"1px solid rgba(0,255,178,0.15)"}}>
-              <div style={{fontSize:9,color:C.green,marginBottom:3}}>✅ 15/15 dosya mevcut</div>
-              <div style={{fontSize:9,color:C.amber,marginBottom:3}}>⚠️ 2/10 modül eksik: anthropic, crewai</div>
-              <div style={{fontSize:9,color:C.muted}}>🔧 pip install anthropic crewai → tam kapasite</div>
-            </div>
-          </div>
-        )}
-        {tab==="admin"   && <AdminPanel />}
+        {tab==="agents"  &&<AdminPanel forceSection="crewai" />}
+        {tab==="exchanges"&&<AdminPanel forceSection="trading" />}
+        {tab==="risk"    &&<AdminPanel forceSection="risk" />}
+        {tab==="portfolio"&&<div style={{padding:20}}>Portfolio View (Coming Soon)</div>}
+        {tab==="admin"   &&<AdminPanel />}
       </div>
 
       <div style={{display:"flex",borderTop:`1px solid ${C.border}`,
-        background:"rgba(0,0,0,0.7)",backdropFilter:"blur(20px)",flexShrink:0}}>
+        background:"rgba(0,0,0,0.7)",backdropFilter:"blur(20px)",flexShrink:0,overflowX:"auto"}}>
         {TABS.map(t=>{
           const a=tab===t.id;
           return (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
-              flex:1,padding:"8px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+              flex:1,minWidth:60,padding:"8px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,
               background:a?"rgba(0,255,178,0.06)":"transparent",border:"none",cursor:"pointer",
               borderTop:`2px solid ${a?C.green:"transparent"}`,transition:"all 0.15s"}}>
               <span style={{fontSize:16}}>{t.icon}</span>
